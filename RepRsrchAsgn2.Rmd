@@ -1,0 +1,117 @@
+---
+title: "NOAA Storm Database Analysis"
+author: "Michael Chuang"
+date: "Monday, May 18, 2015"
+output: html_document
+---
+
+
+Load the raw dataset and load the dplyr package for data analysis
+```{r echo=TRUE, cache=TRUE}
+sd <- read.csv("repdata-data-StormData.csv.bz2")
+library(dplyr)
+
+dstnct
+```
+
+Test damage calumns to ensure they are all numeric and extract relevent subsets for answering questions.  Expected output for this test is all 0s 
+```{r echo=TRUE, cache=FALSE}
+
+## Test for injuries value column
+dstnctval <- distinct(select(sd, INJURIES))
+nonnum <- filter(dstnctval, !is.numeric(INJURIES))
+NROW(nonnum)
+
+## Test for fatalities value column
+dstnctval <- distinct(select(sd, FATALITIES))
+nonnum <- filter(dstnctval, !is.numeric(FATALITIES))
+NROW(nonnum)
+
+## Test for croperty damage value column
+dstnctval <- distinct(select(sd, PROPDMG))
+nonnum <- filter(dstnctval, !is.numeric(PROPDMG))
+NROW(nonnum)
+
+## Test for crop damage value column
+dstnctval <- distinct(select(sd, CROPDMG))
+nonnum <- filter(dstnctval, !is.numeric(CROPDMG))
+NROW(nonnum)
+
+```
+
+This section illustrate what types of events have the greatest impact on the human health.
+My approach is filtering observations that fatalities or injuries and then sum them up by event type.  I will then select top 5 events with the most conbine injuries and fatalities.
+
+With this analysis, I am making the following assumptions
+1. Fatalities and injuries are equal.  There are no injury type or injury seriousness, or number of death equal to injuries to be able to differentiate them.
+2. Percentage of bad data is small enough to be negligible. For example, similar event types like Cold, COLD, COLD Temperature.
+3. Lack of data before 1993 also has negligible impact on the analysis
+```{r echo=TRUE, cache=TRUE}
+
+dhealth <- filter(sd, FATALITIES > 0 | INJURIES > 0)  ## filter only observations where there are fatalities and injuries
+dhealth <- select(dhealth, BGN_DATE, EVTYPE, FATALITIES, INJURIES)  ##select subset of columns relevent for my analysis 
+dhealth <- mutate(dhealth, tothmnsffrng = FATALITIES + INJURIES)  ## create a new column (Total human suffering) that sums up Fatalities and injuries
+by_evtypeH <- group_by(dhealth, EVTYPE)  ## Group by event type
+sumevsuffering <- summarize(by_evtypeH, count = n(), tothmnsffrngbytype = sum(tothmnsffrng))  ## aggregate total suffering by event types
+topsuffering <- top_n(sumevsuffering, 5, tothmnsffrngbytype)  ## select top 5 impact with the most suffering
+## Plot the analysis 
+qplot(EVTYPE, tothmnsffrngbytype, data = topsuffering, main = "Top 5 Greatest Human Impact", ylab = "Total Human Incident", xlab = "Event Type")
+```
+
+This section illustrate what types of events have the greatest economic consequences.
+My approach is filtering observations that has property or crop damages and then sum them up by event type.  I will then select top 5 events with the greatest economic impact.
+
+With this analysis, I am making the following assumptions
+1. Percentage of bad data is small enough to be negligible. For example, similar event types like Cold, COLD, COLD Temperature.
+2. Lack of data before 1993 also has negligible impact on the analysis
+```{r echo=TRUE, cache=TRUE}
+decon <- filter(sd, PROPDMG > 0 | CROPDMG > 0)  ## select observations with property or crop damages
+decon <- select(decon, BGN_DATE, EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)  ## select relevent fields for the analysis
+decon <- mutate(decon, PROPDMGVAL = PROPDMG * sapply(PROPDMGEXP, transEXP), CROPDMGVAL = CROPDMG * sapply(CROPDMGEXP, transEXP), evyear = format(as.POSIXct(decon$BGN_DATE,format='%m/%d/%Y %H:%M:%S'), "%Y"))
+
+by_evtype <- group_by(decon, EVTYPE)
+sumevdamage <- summarize(by_evtype, count = n(), totdamage = sum(PROPDMGVAL + CROPDMGVAL))
+topdamage <- top_n(sumevdamage, 5, totdamage)
+qplot(EVTYPE, totdamage, data = topdamage, main = "Top 5 Greatest Economic Damage", ylab = "Total Damage", xlab = "Event Type")
+
+##by_evtypeyear <- group_by(decon, EVTYPE, evyear)
+##sumdamage <- summarize(by_evtypeyear, count = n(), totdamage = sum(PROPDMGVAL + CROPDMGVAL))
+
+##topecondamage <- inner_join(sumdamage, topdamage, by = c("EVTYPE" = "EVTYPE"))
+##topecondamage <- filter(topecondamage, evyear > 1992)
+##topecondamage <- filter(topecondamage, totdamage.x < 20000000000)
+
+##sapply(decon$BGN_DATE, julian)
+##deconVal <- select(decon, PROPDMGEXP)
+##deconVal <- mutate(deconVal, EXPVAL = transEXP(PROPDMGEXP))
+##apply(deconVal, 2, is.vector)
+##sapply(deconVal$PROPDMGEXP, transEXP)
+##sapply(deconVal$PROPDMGEXP, transEXP(PROPDMGEXP))
+transEXP <- function(x) {
+  result <- 0
+  if (x == "M" | x == "m" | x == "6") {
+    result <- 1000000
+  }
+  if (x == "K" | x == "3") {
+    result <- 1000
+  }
+  if (x == "B") {
+    result <- 1000000000
+  }
+  if (x == "5") {
+    result <- 100000
+  }
+  if (x == "4") {
+    result <- 1000  
+  }
+  if (x == "h" | x == "2" | x == "H") {
+    result <- 100
+  }
+  return(result)
+}
+
+
+
+```
+
+
